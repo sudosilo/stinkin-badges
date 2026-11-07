@@ -10,9 +10,17 @@ echo "Adding the badge tables."
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/database/query" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data @"$DIR/tables.json")
 if [ "$CODE" != "201" ] && [ "$CODE" != "200" ]; then echo "Tables step failed with code $CODE."; exit 1; fi
 
-echo "Adding the login code to the emails."
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$API/config/auth" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data @"$DIR/email.json")
-if [ "$CODE" != "200" ]; then echo "Email step failed with code $CODE."; exit 1; fi
+echo "Allowing logins to return to the badge tool."
+SITE="https://pajamastan-badge-tool.vercel.app"
+CUR=$(curl -s "$API/config/auth" -H "Authorization: Bearer $TOKEN" | grep -o '"uri_allow_list":"[^"]*"' | sed 's/"uri_allow_list":"//; s/"$//')
+case ",$CUR," in
+  *",$SITE,"*) echo "Already allowed." ;;
+  *)
+    if [ -z "$CUR" ]; then NEW="$SITE"; else NEW="$CUR,$SITE"; fi
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$API/config/auth" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data "{\"uri_allow_list\":\"$NEW\"}")
+    if [ "$CODE" != "200" ]; then echo "Return address step failed with code $CODE."; exit 1; fi
+    ;;
+esac
 
 ANON=$(curl -s "$API/api-keys" -H "Authorization: Bearer $TOKEN" | tr '{' '\n' | grep '"name":"anon"' | sed 's/.*"api_key":"\([^"]*\)".*/\1/')
 if [ -z "$ANON" ]; then echo "Could not read the public key."; exit 1; fi
